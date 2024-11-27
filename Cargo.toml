@@ -10,10 +10,11 @@ color-eyre = "0.6"
 cuid2 = "0.1.3"
 dotenvy = "0.15"
 email_address = "0.2"
-lettre = { version = "0.11", features = ["pool", "tracing"]}
+lettre = { version = "0.11", features = ["pool", "tracing"] }
 serde = "1.0"
 serde_derive = "1.0"
 serde_rusqlite = "0.36"
 rusqlite = "0.32"
 tracing = "0.1"
-tracing-subscriber = "0.3"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+speedate = "0.15"

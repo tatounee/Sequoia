@@ -1,12 +1,19 @@
-use std::str::FromStr;
+// use std::str::FromStr;
+
+// use color_eyre::eyre::Result;
+// use email_address::EmailAddress;
 
 use color_eyre::eyre::Result;
+// use super::{Email, EmailModel};
 use cuid2::create_id;
-use email_address::EmailAddress;
+use serde_derive::{Deserialize, Serialize};
+use serde_rusqlite::to_params_named;
 
-use super::{Email, EmailModel};
+use crate::db::DB;
 
+#[derive(Deserialize, Serialize, Debug)]
 pub struct PlainEmail {
+    #[serde(rename(deserialize = "ID"))]
     id: String,
     subject: String,
     body: String,
@@ -14,14 +21,14 @@ pub struct PlainEmail {
 
 impl PlainEmail {
     pub(crate) const CREATE_TABLES: &'static str = r#"
-    CREATE TABLE IF NOT EXISTS PlainEmail (
-        ID           TEXT PRIMARY KEY,
-        subject      TEXT,
-        body         TEXT
+        CREATE TABLE IF NOT EXISTS PlainEmail (
+            ID       TEXT PRIMARY KEY,
+            subject  TEXT,
+            body     TEXT
         ) STRICT;
         "#;
 
-    pub fn new(subject: String, body: String) -> Self {
+    pub(super) fn new(subject: String, body: String) -> Self {
         Self {
             id: create_id(),
             subject,
@@ -29,11 +36,30 @@ impl PlainEmail {
         }
     }
 
-    pub fn into_email(self, sender_adresse: &str) -> Result<Email> {
-        let sender_adresse = EmailAddress::from_str(sender_adresse)?;
-        let email = EmailModel::Plain(self);
+    pub(super) fn from_sql(id: String, subject: String, body: String) -> Self {
+        Self { id, subject, body }
+    }
 
-        Ok(Email::new(sender_adresse, email))
+    pub fn create(subject: String, body: String, db: &DB) -> Result<Self> {
+        let this = Self::new(subject, body);
+
+        let mut stmt = db.connection().prepare_cached(
+            "INSERT INTO PlainEmail (ID, subject, body) VALUES (:id, :subject, :body)",
+        )?;
+
+        stmt.execute(to_params_named(&this)?.to_slice().as_slice())?;
+
+        Ok(this)
+    }
+
+    pub(super) fn write(&self, db: &DB) -> Result<()> {
+        let mut stmt = db.connection().prepare_cached(
+            "INSERT INTO PlainEmail (ID, subject, body) VALUES (:id, :subject, :body)",
+        )?;
+
+        stmt.execute(to_params_named(self)?.to_slice().as_slice())?;
+
+        Ok(())
     }
 
     pub fn subject(&self) -> &str {
@@ -42,5 +68,9 @@ impl PlainEmail {
 
     pub fn body(&self) -> &str {
         &self.body
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
     }
 }

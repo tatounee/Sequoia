@@ -1,6 +1,13 @@
+use color_eyre::eyre::Result;
 use cuid2::create_id;
+use serde_derive::{Deserialize, Serialize};
+use serde_rusqlite::to_params_named;
 
+use crate::db::DB;
+
+#[derive(Deserialize, Serialize, Debug)]
 pub struct TemplateEmail {
+    #[serde(rename(deserialize = "ID"))]
     id: String,
     subject: String,
     body: String,
@@ -17,12 +24,38 @@ impl TemplateEmail {
         ) STRICT;
     "#;
 
-    pub fn new(subject: String, body: String, source_path: String) -> Self {
+    pub(super) fn new(subject: String, body: String, source_path: String) -> Self {
         Self {
             id: create_id(),
             subject,
             body,
             source_path,
         }
+    }
+
+    pub fn create(subject: String, body: String, source_path: String, db: &DB) -> Result<Self> {
+        let this = Self::new(subject, body, source_path);
+
+        let mut stmt = db.connection().prepare_cached(
+            "INSERT INTO TemplateEmail (ID, subject, body, source_path) VALUES (:id, :adresse, :body, :source_path)",
+        )?;
+
+        stmt.execute(to_params_named(&this)?.to_slice().as_slice())?;
+
+        Ok(this)
+    }
+
+    pub(super) fn write(&self, db: &DB) -> Result<()> {
+        let mut stmt = db.connection().prepare_cached(
+            "INSERT INTO TemplateEmail (ID, subject, body, source_path) VALUES (:id, :adresse, :body, :source_path)",
+        )?;
+
+        stmt.execute(to_params_named(self)?.to_slice().as_slice())?;
+
+        Ok(())
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
     }
 }

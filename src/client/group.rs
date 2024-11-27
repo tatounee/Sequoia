@@ -7,8 +7,9 @@ use crate::db::DB;
 
 use super::Client;
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Group {
+    #[serde(rename(deserialize = "ID"))]
     id: String,
     name: String,
     #[serde(skip)]
@@ -23,12 +24,12 @@ impl Group {
         ) STRICT;
         
         CREATE TABLE IF NOT EXISTS MM_ClientGroupClient (
-            client_group  TEXT,
-            client        TEXT,
-            FOREIGN KEY(client_group)  REFERENCES ClientGroup(ID)
+            client_group_ID  TEXT,
+            client_ID        TEXT,
+            FOREIGN KEY(client_group_ID)  REFERENCES ClientGroup(ID)
                 ON UPDATE CASCADE
                 ON DELETE CASCADE,
-            FOREIGN KEY(client)        REFERENCES Client(ID)
+            FOREIGN KEY(client_ID)        REFERENCES Client(ID)
                 ON UPDATE CASCADE
                 ON DELETE CASCADE
         ) STRICT;
@@ -42,6 +43,10 @@ impl Group {
         }
     }
 
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
     pub fn clients(&self) -> Option<&[Client]> {
         self.clients.as_deref()
     }
@@ -50,8 +55,8 @@ impl Group {
         let mut stmt = db.connection().prepare_cached(
             r"
             SELECT Client.ID, Client.adresse FROM Client 
-                LEFT JOIN MM_ClientGroupClient ON MM_ClientGroupClient.client = Client.ID
-                WHERE MM_ClientGroupClient.client_group = ?",
+                JOIN MM_ClientGroupClient ON MM_ClientGroupClient.client_ID = Client.ID
+                WHERE MM_ClientGroupClient.client_group_ID = ?",
         )?;
 
         let columns = columns_from_statement(&stmt);
@@ -72,28 +77,32 @@ impl Group {
             .connection()
             .prepare_cached("INSERT INTO ClientGroup (ID, name) VALUES (:id, :name)")?;
 
-        stmt.execute(to_params_named(this.clone_())?.to_slice().as_slice())?;
+        stmt.execute(to_params_named(&this)?.to_slice().as_slice())?;
 
         Ok(this)
     }
 
-    pub fn get(id: String, db: &DB) -> Result<Option<Self>> {
-        let mut stmt = db
-            .connection()
-            .prepare_cached("SELECT * FROM ClientGroup WHERE ID = ?")?;
-
-        let columns = columns_from_statement(&stmt);
-
-        let mut rows = stmt
-            .query_and_then([id], |row| from_row_with_columns::<Self>(row, &columns))
-            .unwrap();
-
-        Ok(rows.next().transpose()?)
+    pub fn id(&self) -> &str {
+        &self.id
     }
+
+    // pub fn get(id: String, db: &DB) -> Result<Option<Self>> {
+    //     let mut stmt = db
+    //         .connection()
+    //         .prepare_cached("SELECT * FROM ClientGroup WHERE ID = ?")?;
+
+    //     let columns = columns_from_statement(&stmt);
+
+    //     let mut rows = stmt
+    //         .query_and_then([id], |row| from_row_with_columns::<Self>(row, &columns))
+    //         .unwrap();
+
+    //     Ok(rows.next().transpose()?)
+    // }
 
     pub fn add_client(&mut self, id: String, db: &DB) -> Result<()> {
         let mut stmt = db.connection().prepare_cached(
-            "INSERT INTO MM_ClientGroupClient (client_group, client) VALUES (?, ?)",
+            "INSERT INTO MM_ClientGroupClient (client_group_ID, client_ID) VALUES (?, ?)",
         )?;
 
         stmt.execute((self.id.clone(), id))?;
@@ -103,7 +112,7 @@ impl Group {
 
     pub fn add_clients(&mut self, ids: &[String], db: &DB) -> Result<()> {
         let mut stmt = db.connection().prepare_cached(
-            "INSERT INTO MM_ClientGroupClient (client_group, client) VALUES (?, ?)",
+            "INSERT INTO MM_ClientGroupClient (client_group_ID, client_ID) VALUES (?, ?)",
         )?;
 
         for id in ids {
@@ -115,7 +124,7 @@ impl Group {
 
     pub fn remove_client(&mut self, id: String, db: &DB) -> Result<()> {
         let mut stmt = db.connection().prepare_cached(
-            "DELETE FROM MM_ClientGroupClient WHERE client_group = ? AND client = ?",
+            "DELETE FROM MM_ClientGroupClient WHERE client_group_ID = ? AND client_ID = ?",
         )?;
 
         stmt.execute((self.id.clone(), id))?;
@@ -125,7 +134,7 @@ impl Group {
 
     pub fn remove_clients(&mut self, ids: &[String], db: &DB) -> Result<()> {
         let mut stmt = db.connection().prepare_cached(
-            "DELETE FROM MM_ClientGroupClient WHERE client_group = ? AND client = ?",
+            "DELETE FROM MM_ClientGroupClient WHERE client_group_ID = ? AND client_ID = ?",
         )?;
 
         for id in ids {
@@ -133,20 +142,5 @@ impl Group {
         }
 
         Ok(())
-    }
-}
-
-impl Group {
-    fn clone_(&self) -> Self {
-        let clients = self
-            .clients
-            .as_ref()
-            .map(|clients| clients.iter().map(Client::clone_).collect());
-
-        Self {
-            id: self.id.clone(),
-            name: self.name.clone(),
-            clients,
-        }
     }
 }

@@ -1,17 +1,28 @@
 use color_eyre::eyre::Result;
+use tracing::info;
+use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
-use tracing::Level;
-use tracing_subscriber::FmtSubscriber;
+use sequoia::{
+    client::{Client, Group},
+    db::DB,
+    email::{Email, EmailBuilder},
+    mailer::Mailer,
+};
 
 fn main() -> Result<()> {
     init()?;
 
-    // let db = DB::connect("sequoia.db")?;
-    // db.clean()?;
+    let db = DB::connect()?;
+    db.clean()?;
 
-    // let ids = (0..10).map(|i| {
-    //     Client::create(&format!("test+{}@tsm-tp.fr", i), &db).unwrap().id_()
-    // }).collect::<Vec<String>>();
+    // let ids = (0..10)
+    //     .map(|i| {
+    //         Client::create(&format!("test+{}@tsm-tp.fr", i), &db)
+    //             .unwrap()
+    //             .id()
+    //             .to_owned()
+    //     })
+    //     .collect::<Vec<String>>();
 
     // let mut group = Group::create("Golems".into(), &db)?;
 
@@ -22,19 +33,34 @@ fn main() -> Result<()> {
     // group.fetch_client(&db)?;
     // info!("{:?}", group);
 
-    // let email = EmailBuilder::new()
-    //     .subject("Greeting")
-    //     .plain_body("Hello from <strong>Sequoia</strong>")
-    //     .sender_adresse("Tarak <matteo.delfour@tsm-tp.fr>")?
-    //     .build();
-    // let client = Client::new("test@tsm-tp.fr")?;
+    let email = EmailBuilder::new()
+        .subject("Greeting")
+        .plain_body("Hello from <strong>Sequoia</strong>")
+        .sender_adresse("Tarak <matteo.delfour@tsm-tp.fr>")?
+        .create(&db)?;
 
-    // let mailer = Mailer::new()?;
+    for i in 0..10 {
+        EmailBuilder::new()
+            .subject(&format!("G{i}"))
+            .plain_body("")
+            .sender_adresse("a@a.a")?
+            .create(&db)?;
+    }
 
-    // mailer.send(&email, &client.into())?;
+    let em2 = Email::get_one(email.id_(), &db)?;
+
+    info!("{email:?}");
+    info!("{em2:?}");
+
+    // let client = Client::create("test+aa@tsm-tp.fr", &db)?;
+
+    // let mailer = Mailer::new(&db)?;
+
+    // mailer.send(&email, &mut client.into())?;
+    // mailer.send(&email, &mut group.into())?;
 
     // let email = Message::builder()
-    // .from("NoBody <matteo.delfour@tsm-tp.fr>".parse().unwrap())
+    //     .from("NoBody <matteo.delfour@tsm-tp.fr>".parse().unwrap())
     //     .to("Test <test@tsm-tp.fr>".parse().unwrap())
     //     .subject("Happy new year")
     //     .header(ContentType::TEXT_PLAIN)
@@ -78,11 +104,17 @@ fn init() -> Result<()> {
     color_eyre::install()?;
     dotenvy::dotenv()?;
 
-    let subscriber = FmtSubscriber::builder()
-        .with_max_level(Level::INFO)
-        .finish();
+    // let subscriber = FmtSubscriber::builder()
+    //     .with_max_level(Level::DEBUG)
+    //     .with(EnvFilter::from_env("sequoia"))
+    //     .finish();
 
-    tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
+    tracing_subscriber::registry()
+        .with(fmt::layer())
+        .with(EnvFilter::from_default_env())
+        .init();
+
+    // tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
     Ok(())
 }

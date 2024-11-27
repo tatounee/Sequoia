@@ -9,13 +9,15 @@ mod group;
 pub use group::Group;
 use serde_rusqlite::{columns_from_statement, from_row_with_columns, to_params_named};
 
-use crate::db::DB;
+use crate::{db::DB, email::Email};
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Client {
     #[serde(rename(deserialize = "ID"))]
     id: String,
     adresse: EmailAddress,
+    #[serde(skip)]
+    received_emails: Option<Vec<Email>>
 }
 
 impl Client {
@@ -32,11 +34,8 @@ impl Client {
         Ok(Self {
             id: create_id(),
             adresse,
+            received_emails: None
         })
-    }
-
-    pub fn adresse(&self) -> &str {
-        self.adresse.as_ref()
     }
 
     pub fn create(adresse: &str, db: &DB) -> Result<Self> {
@@ -46,9 +45,17 @@ impl Client {
             .connection()
             .prepare_cached("INSERT INTO Client (ID, adresse) VALUES (:id, :adresse)")?;
 
-        stmt.execute(to_params_named(this.clone_())?.to_slice().as_slice())?;
+        stmt.execute(to_params_named(&this)?.to_slice().as_slice())?;
 
         Ok(this)
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn adresse(&self) -> &str {
+        self.adresse.as_ref()
     }
 
     pub fn get_one(id: String, db: &DB) -> Result<Option<Self>> {
@@ -78,19 +85,5 @@ impl Client {
 
             rows.next().transpose()
         }))?)
-    }
-
-    #[cfg(debug_assertions)]
-    pub fn id_(&self) -> String {
-        self.id.clone()
-    }
-}
-
-impl Client {
-    fn clone_(&self) -> Self {
-        Self {
-            id: self.id.clone(),
-            adresse: self.adresse.clone(),
-        }
     }
 }

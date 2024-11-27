@@ -2,7 +2,7 @@ use color_eyre::eyre::Result;
 use email_address::EmailAddress;
 use tracing::error;
 
-use crate::email::TemplateEmail;
+use crate::{db::DB, email::TemplateEmail};
 
 use super::{Email, EmailModel, PlainEmail};
 
@@ -55,7 +55,7 @@ impl EmailBuilder {
         self
     }
 
-    pub fn build(self) -> Email {
+    pub fn create(self, db: &DB) -> Result<Email> {
         let subject = self.subject.unwrap_or_default();
 
         let sender_adresse = if let Some(sender_adresse) = self.sender_adresse {
@@ -80,6 +80,6 @@ impl EmailBuilder {
             EmailModel::Plain(PlainEmail::new(subject, "".to_owned()))
         };
 
-        Email::new(sender_adresse, email)
+        Email::create(sender_adresse, email, db)
     }
 }

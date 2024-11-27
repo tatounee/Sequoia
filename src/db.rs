@@ -4,6 +4,7 @@ use tracing::{debug, info, instrument};
 
 use crate::client::{Client, Group};
 use crate::email::{Email, PlainEmail, TemplateEmail};
+use crate::mailer::Mailer;
 
 pub struct DB {
     path: String,
@@ -12,8 +13,10 @@ pub struct DB {
 
 impl DB {
     #[instrument(skip_all)]
-    pub fn connect(path: &str) -> Result<Self> {
-        let connection = Connection::open(path)?;
+    pub fn connect() -> Result<Self> {
+        let path = dotenvy::var("DB_PATH")?;
+
+        let connection = Connection::open(&path)?;
         info!("Connected to {}", path);
 
         // Enable foreign keys
@@ -39,6 +42,7 @@ impl DB {
             PlainEmail::CREATE_TABLES,
             TemplateEmail::CREATE_TABLES,
             Email::CREATE_TABLES,
+            Mailer::CREATE_TABLES
         ]
         .join("\n");
 
@@ -60,6 +64,11 @@ impl DB {
             DELETE FROM MM_ClientGroupClient WHERE 0=0;
             DELETE FROM Client WHERE 0=0;
             DELETE FROM ClientGroup WHERE 0=0;
+            DELETE FROM MM_EmailClient WHERE 0=0;
+            DELETE FROM MM_EmailClientGroup WHERE 0=0;
+            DELETE FROM Email WHERE 0=0;
+            DELETE FROM PlainEmail WHERE 0=0;
+            DELETE FROM TemplateEmail WHERE 0=0;
         ",
         )?;
 
