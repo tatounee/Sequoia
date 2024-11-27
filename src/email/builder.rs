@@ -4,14 +4,15 @@ use tracing::error;
 
 use crate::{db::DB, email::TemplateEmail};
 
-use super::{Email, EmailModel, PlainEmail};
+use super::{tags::Tags, Email, EmailModel, PlainEmail};
 
 #[derive(Default)]
 pub struct EmailBuilder {
+    sender_adresse: Option<EmailAddress>,
+    tags: Option<Tags>,
     subject: Option<String>,
     plain_body: Option<String>,
     template_body: Option<String>,
-    sender_adresse: Option<EmailAddress>,
     source_path: Option<String>,
 }
 
@@ -27,6 +28,11 @@ impl EmailBuilder {
 
     pub fn sender_adresse(mut self, sender_adresse: &str) -> Result<Self> {
         self.sender_adresse = Some(sender_adresse.parse()?);
+        Ok(self)
+    }
+
+    pub fn tags(mut self, tags: Vec<String>) -> Result<Self> {
+        self.tags = Some(Tags::try_from(tags)?);
         Ok(self)
     }
 
@@ -80,6 +86,8 @@ impl EmailBuilder {
             EmailModel::Plain(PlainEmail::new(subject, "".to_owned()))
         };
 
-        Email::create(sender_adresse, email, db)
+        let tags = self.tags.unwrap_or_default();
+
+        Email::create(sender_adresse, email, tags.into_vec(), db)
     }
 }

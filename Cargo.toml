@@ -17,4 +17,5 @@ serde_rusqlite = "0.36"
 rusqlite = "0.32"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-error = "0.2"
 speedate = "0.15"

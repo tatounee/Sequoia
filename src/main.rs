@@ -1,5 +1,6 @@
 use color_eyre::eyre::Result;
 use tracing::info;
+use tracing_error::ErrorLayer;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 use sequoia::{
@@ -37,6 +38,7 @@ fn main() -> Result<()> {
         .subject("Greeting")
         .plain_body("Hello from <strong>Sequoia</strong>")
         .sender_adresse("Tarak <matteo.delfour@tsm-tp.fr>")?
+        .tags(vec!["JE".to_owned(), "MRI".to_owned(), "ff".to_owned()])?
         .create(&db)?;
 
     for i in 0..10 {
@@ -111,6 +113,7 @@ fn init() -> Result<()> {
 
     tracing_subscriber::registry()
         .with(fmt::layer())
+        .with(ErrorLayer::default())
         .with(EnvFilter::from_default_env())
         .init();
 

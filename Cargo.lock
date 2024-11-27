@@ -1106,6 +1106,7 @@ dependencies = [
  "serde_rusqlite",
  "speedate",
  "tracing",
+ "tracing-error",
  "tracing-subscriber",
 ]
 

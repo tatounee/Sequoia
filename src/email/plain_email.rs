@@ -1,10 +1,4 @@
-// use std::str::FromStr;
-
-// use color_eyre::eyre::Result;
-// use email_address::EmailAddress;
-
 use color_eyre::eyre::Result;
-// use super::{Email, EmailModel};
 use cuid2::create_id;
 use serde_derive::{Deserialize, Serialize};
 use serde_rusqlite::to_params_named;
