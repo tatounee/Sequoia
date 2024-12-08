@@ -79,7 +79,7 @@ impl Email {
                         &this.id,
                         this.sender_adresse.to_string(),
                         &this.tags.to_string(),
-                        0,
+                        EmailModel::PLAIN_DISCRIMINANT,
                         plain_email.id(),
                         Null,
                     ))?;
@@ -88,7 +88,7 @@ impl Email {
                     stmt.execute((
                         &this.id,
                         this.sender_adresse.to_string(),
-                        1,
+                        EmailModel::TEMPLATE_DISCRIMINANT,
                         Null,
                         template_email.id(),
                     ))?;
@@ -156,13 +156,14 @@ impl Email {
 
 #[derive(Debug)]
 pub enum EmailModel {
-    /// SQL discriminant : **0**.
     Plain(PlainEmail),
-    /// SQL discriminant : **1**.
     Template(TemplateEmail),
 }
 
 impl EmailModel {
+    const PLAIN_DISCRIMINANT: u8 = 0;
+    const TEMPLATE_DISCRIMINANT: u8 = 1;
+
     async fn write(&self, db: &DB) -> Result<()> {
         match self {
             Self::Plain(plain_email) => plain_email.write(db).await?,
@@ -197,7 +198,7 @@ impl TryFrom<SQLEmail> for Email {
         // TODO: Gérer les erreurs correctement
 
         let email_model = match value.email_discriminant {
-            0 => {
+            EmailModel::PLAIN_DISCRIMINANT => {
                 let plain_email = PlainEmail::from_sql(
                     value.plain_email_id.unwrap(),
                     value.plain_subject.unwrap(),
@@ -205,7 +206,7 @@ impl TryFrom<SQLEmail> for Email {
                 );
                 EmailModel::Plain(plain_email)
             }
-            1 => {
+            EmailModel::TEMPLATE_DISCRIMINANT => {
                 unimplemented!("Template email are not yet implemented")
             }
             _ => {
