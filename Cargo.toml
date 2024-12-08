@@ -18,5 +18,5 @@ rusqlite = "0.32"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-error = "0.2"
-speedate = "0.15"
 tokio = { version = "1", features = ["full", "test-util"] }
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
