@@ -1,20 +1,103 @@
+#![feature(async_closure)]
+
+use std::sync::Arc;
+
 use color_eyre::eyre::Result;
-use tracing::info;
+use tracing::{info, instrument};
 use tracing_error::ErrorLayer;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 use sequoia::{
-    client::{Client, Group},
     db::DB,
-    email::{Email, EmailBuilder},
+    email::EmailBuilder,
     mailer::Mailer,
+    scheduler::{
+        trigger::{Counter, CounterTrigger, DatetimeTrigger, NaiveTime, PartialDate, Trigger},
+        Scheduler,
+    },
 };
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     init()?;
 
-    let db = DB::connect()?;
-    db.clean()?;
+    let db = Box::new(DB::connect().await?);
+    let db: &'static DB = Box::leak(db);
+    db.clean().await?;
+
+    let mailer = Mailer::new(db)?;
+
+    let mut scheduler = Scheduler::new(mailer);
+
+    let _email = std::sync::Arc::new(
+        EmailBuilder::new()
+            .subject("Greeting")
+            .plain_body("Hello from <strong>Sequoia</strong>")
+            .sender_adresse("Tarak <matteo.delfour@tsm-tp.fr>")?
+            .tags(vec!["JE".to_owned(), "MRI".to_owned(), "ff".to_owned()])?
+            .create(db)
+            .await?,
+    );
+
+    // let r = Client::create("test+aa@tsm-tp.fr", db).await?.into();
+
+    let mut trigger = CounterTrigger::new(Counter::Finit(10), || {
+        Box::new(DatetimeTrigger::new(
+            PartialDate::new_y(2024),
+            NaiveTime::from_hms_opt(16, 1, 40).unwrap(),
+        ))
+    });
+
+    // let mut trigger = DatetimeTrigger::new(
+    //     PartialDate::new_y(2024),
+    //     NaiveTime::from_hms_opt(15, 41, 40).unwrap(),
+    // );
+
+    info!("Generation = {}", trigger.generation());
+    trigger.forward_generation(10);
+    info!("Generation = {}", trigger.generation());
+
+    #[instrument(skip(_mailer))]
+    async fn send_email(generation: u64, _mailer: Arc<Mailer<'static>>) {
+        info!("Receive {generation}");
+    }
+
+    scheduler.register_trigger_with_action(Box::new(trigger), send_email);
+
+    for i in 0.. {
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        println!("tick {}", i);
+        if i % 10 == 0 {
+            // info!("Generation = {}", trigger.generation());
+        }
+    }
+
+    Ok(())
+
+    // let send_email = |generation: u64, mailer: &Mailer<'_>| async move {
+    //     info!("Receive {generation}");
+    // };
+    // scheduler.register_trigger_with_action(Box::new(trigger), Box::new(send_email));
+
+    // let now = tokio::time::Instant::now();
+    // debug!("now = {now:?}");
+
+    // tokio::time::pause();
+    // tokio::time::advance(Duration::from_secs(3600 * 24)).await;
+    // tokio::time::resume();
+
+    // loop {
+    //     let now = tokio::time::Instant::now();
+    //     debug!("now = {now:?}");
+
+    //     tokio::time::pause();
+    //     tokio::time::advance(Duration::from_secs(3600 * 24)).await;
+    //     tokio::time::resume();
+
+    //     tokio::time::sleep(Duration::from_secs(1)).await;
+    // }
+
+    // Ok(())
 
     // let ids = (0..10)
     //     .map(|i| {
@@ -33,28 +116,6 @@ fn main() -> Result<()> {
 
     // group.fetch_client(&db)?;
     // info!("{:?}", group);
-
-    let email = EmailBuilder::new()
-        .subject("Greeting")
-        .plain_body("Hello from <strong>Sequoia</strong>")
-        .sender_adresse("Tarak <matteo.delfour@tsm-tp.fr>")?
-        .tags(vec!["JE".to_owned(), "MRI".to_owned(), "ff".to_owned()])?
-        .create(&db)?;
-
-    for i in 0..10 {
-        EmailBuilder::new()
-            .subject(&format!("G{i}"))
-            .plain_body("")
-            .sender_adresse("a@a.a")?
-            .create(&db)?;
-    }
-
-    let em2 = Email::get_one(email.id_(), &db)?;
-
-    info!("{email:?}");
-    info!("{em2:?}");
-
-    // let client = Client::create("test+aa@tsm-tp.fr", &db)?;
 
     // let mailer = Mailer::new(&db)?;
 
@@ -98,8 +159,6 @@ fn main() -> Result<()> {
     //     Ok(_) => println!("Email sent successfully!"),
     //     Err(e) => panic!("Could not send email: {e:?}"),
     // }
-
-    Ok(())
 }
 
 fn init() -> Result<()> {
