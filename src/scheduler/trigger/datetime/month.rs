@@ -51,3 +51,56 @@ impl Month {
     }
 }
 
+#[allow(clippy::needless_lifetimes)]
+pub(super) mod serde_month {
+    const SENTINEL_NONE: u32 = 53271237;
+
+    use std::fmt;
+
+    use super::Month;
+    use serde::{
+        de::{Error as DeError, Visitor},
+        Deserializer, Serializer,
+    };
+
+    pub(in super::super) fn serialize<S>(mouth: &Option<Month>, ser: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let value = match mouth {
+            Some(mouth) => mouth.into_ordinal(),
+            None => SENTINEL_NONE,
+        };
+        ser.serialize_u32(value)
+    }
+
+    pub(in super::super) fn deserialize<'de, D>(de: D) -> Result<Option<Month>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct U32Visitor;
+
+        impl<'de> Visitor<'de> for U32Visitor {
+            type Value = u32;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("")
+            }
+
+            fn visit_u32<E>(self, value: u32) -> Result<Self::Value, E>
+            where
+                E: DeError,
+            {
+                Ok(value)
+            }
+        }
+
+        let month = de.deserialize_u32(U32Visitor)?;
+
+        if month == SENTINEL_NONE {
+            Ok(None)
+        } else {
+            Ok(Some(Month::from_ordinal(month)))
+        }
+    }
+}

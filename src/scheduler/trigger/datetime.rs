@@ -10,17 +10,21 @@ use tracing::{debug, error};
 
 pub use chrono::NaiveTime;
 
-#[derive(Clone)]
 mod day;
 mod month;
 mod partial_date;
+mod serde_time;
+mod serde_year;
 
 pub use day::Day;
 pub use month::Month;
 pub use partial_date::PartialDate;
 
+#[derive(Clone, Serialize, Deserialize)]
 pub struct DatetimeTrigger {
+    #[serde(flatten)]
     date: PartialDate,
+    #[serde(with = "serde_time")]
     time: NaiveTime,
 }
 

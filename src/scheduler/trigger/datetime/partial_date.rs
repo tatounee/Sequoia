@@ -1,14 +1,18 @@
 use std::num::NonZero;
 
 use chrono::{Datelike, Days, Local, NaiveDate, NaiveTime};
+use serde_derive::{Deserialize, Serialize};
 use tracing::{error, warn};
 
 use super::{Day, Month};
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct PartialDate {
+    #[serde(with = "super::serde_year")]
     year: Option<u32>,
+    #[serde(with = "super::month::serde_month")]
     month: Option<Month>,
+    #[serde(with = "super::day::serde_day")]
     day: Option<Day>,
 }
 
