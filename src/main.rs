@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use chrono::{Local, TimeDelta, Timelike};
 use color_eyre::eyre::Result;
 use tracing::{info, instrument};
 use tracing_error::ErrorLayer;
@@ -41,35 +42,33 @@ async fn main() -> Result<()> {
 
     // let r = Client::create("test+aa@tsm-tp.fr", db).await?.into();
 
-    let mut trigger = CounterTrigger::new(Counter::Finit(10), || {
-        Box::new(DatetimeTrigger::new(
-            PartialDate::new_y(2024),
-            NaiveTime::from_hms_opt(16, 1, 40).unwrap(),
-        ))
-    });
+    let time_ = Local::now()
+        .time()
+        .overflowing_add_signed(TimeDelta::seconds(6))
+        .0;
 
-    // let mut trigger = DatetimeTrigger::new(
-    //     PartialDate::new_y(2024),
-    //     NaiveTime::from_hms_opt(15, 41, 40).unwrap(),
-    // );
+    let trigger: Trigger = DatetimeTrigger::new(
+        PartialDate::new_y(2024),
+        NaiveTime::from_hms_opt(time_.hour(), time_.minute(), time_.second()).unwrap(),
+    )
+    .into();
 
-    info!("Generation = {}", trigger.generation());
-    trigger.forward_generation(10);
-    info!("Generation = {}", trigger.generation());
+    let mut trigger: Trigger = CounterTrigger::new(Counter::Finit(3), trigger).into();
+
+    info!("Generation = {}", trigger.generation().await);
+    trigger.forward_generation(10).await;
+    info!("Generation = {}", trigger.generation().await);
 
     #[instrument(skip(_mailer))]
     async fn send_email(generation: u64, _mailer: Arc<Mailer<'static>>) {
         info!("Receive {generation}");
     }
 
-    scheduler.register_trigger_with_action(Box::new(trigger), send_email);
+    scheduler.register_trigger_with_action(trigger, send_email);
 
     for i in 0.. {
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         println!("tick {}", i);
-        if i % 10 == 0 {
-            // info!("Generation = {}", trigger.generation());
-        }
     }
 
     Ok(())

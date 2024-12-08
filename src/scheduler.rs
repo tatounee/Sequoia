@@ -9,12 +9,9 @@ use crate::mailer::Mailer;
 
 pub mod trigger;
 
-// type Trigger = ;
-// type Action = ;
-
 pub struct Scheduler {
     mailer: Arc<Mailer<'static>>,
-    tasks: Vec<Box<dyn Trigger>>,
+    tasks: Vec<Trigger>,
     actions: Vec<JoinHandle<()>>,
 }
 
@@ -29,7 +26,7 @@ impl Scheduler {
 
     pub fn register_trigger_with_action<A, Fut>(
         &mut self,
-        mut trigger: Box<dyn Trigger>,
+        mut trigger: Trigger,
         // mut action: impl Fn(u64) -> BoxFuture<'static, ()> + Send + 'static,
         action: A,
     ) where
@@ -53,6 +50,9 @@ impl Scheduler {
 
             debug!("End of action");
         });
+
+        debug!("Start trigger");
+        trigger.start();
 
         self.tasks.push(trigger);
         self.actions.push(action);

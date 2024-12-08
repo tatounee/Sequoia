@@ -3,39 +3,36 @@ use std::sync::Arc;
 use chrono::{Datelike, Days, Local, NaiveDate, NaiveDateTime, Weekday};
 use color_eyre::eyre::Result;
 use tokio::{
-    sync::{
-        mpsc::{self, Receiver, Sender},
-        Mutex,
-    },
+    sync::{mpsc::Sender, Mutex},
     task::JoinHandle,
 };
 use tracing::{debug, error, warn};
 
-use super::Trigger;
-
 pub use chrono::NaiveTime;
 
+#[derive(Clone)]
 pub struct DatetimeTrigger {
     date: PartialDate,
     time: NaiveTime,
-    handler: JoinHandle<()>,
-    sender: Sender<u64>,
-    receiver: Option<Receiver<u64>>,
-    generation: Arc<Mutex<u64>>,
 }
 
 impl DatetimeTrigger {
+
     pub fn new(date: PartialDate, time: NaiveTime) -> Self {
-        let (tx, rx) = mpsc::channel(4);
-        let tx_ = tx.clone();
+        Self { date, time }
+    }
 
-        let generation = Arc::new(Mutex::new(0));
-        let generation_ = generation.clone();
+    pub(super) fn start(&self, generation: Arc<Mutex<u64>>, tx: Sender<u64>) -> JoinHandle<()> {
+        let date = self.date;
+        let time = self.time;
 
-        let handler = tokio::spawn(async move {
-            let generation = generation_;
-
+        tokio::spawn(async move {
             let now = Local::now();
+
+            // if time <= now.time() {
+            //     time = now.time().overflowing_add_signed(TimeDelta::seconds(8)).0;
+            // }
+
             let target = NaiveDateTime::new(date.next_valide_date(time), time)
                 .and_local_timezone(Local)
                 .unwrap();
@@ -55,36 +52,6 @@ impl DatetimeTrigger {
             if let Err(err) = res {
                 error!("{err:?}");
             }
-        });
-
-        Self {
-            date,
-            time,
-            handler,
-            sender: tx_,
-            receiver: Some(rx),
-            generation,
-        }
-    }
-}
-
-impl Trigger for DatetimeTrigger {
-    fn abort(&self) {
-        self.handler.abort();
-    }
-
-    fn receiver(&mut self) -> Option<Receiver<u64>> {
-        self.receiver.take()
-    }
-
-    fn generation(&self) -> u64 {
-        tokio::task::block_in_place(|| *self.generation.blocking_lock())
-    }
-
-    fn forward_generation(&mut self, offset: u64) {
-        tokio::task::block_in_place(move || {
-            let mut generation = self.generation.blocking_lock();
-            *generation += offset;
         })
     }
 }

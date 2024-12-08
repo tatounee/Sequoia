@@ -1,10 +1,7 @@
 use std::sync::Arc;
 
 use tokio::{
-    sync::{
-        mpsc::{self, Receiver, Sender},
-        Mutex,
-    },
+    sync::{mpsc::Sender, Mutex},
     task::JoinHandle,
 };
 use tracing::debug;
@@ -13,12 +10,8 @@ use super::Trigger;
 
 pub struct CounterTrigger {
     counter: Counter,
-    generation: Arc<Mutex<u64>>,
-    handler: JoinHandle<()>,
-    sender: Sender<u64>,
-    receiver: Option<Receiver<u64>>,
-    trigger_factory: Arc<dyn Fn() -> Box<dyn Trigger + Send>>,
-    trigger: Arc<Mutex<Option<Box<dyn Trigger + Send>>>>,
+    trigger_model: Box<Trigger>,
+    trigger: Arc<Mutex<Option<Box<Trigger>>>>,
 }
 
 #[derive(Clone, Copy)]
@@ -28,92 +21,62 @@ pub enum Counter {
 }
 
 impl CounterTrigger {
-    pub fn new(
-        counter: Counter,
-        trigger_factory: impl Fn() -> Box<dyn Trigger + Send> + Send + Sync + 'static,
-    ) -> Self {
-        let (tx, rx) = mpsc::channel(4);
-        let tx_ = tx.clone();
+    pub fn new(counter: Counter, trigger_model: Trigger) -> Self {
+        Self {
+            counter,
+            trigger_model: Box::new(trigger_model),
+            trigger: Arc::new(Mutex::new(None)),
+        }
+    }
 
-        let generation = Arc::new(Mutex::new(0));
-        let generation_ = generation.clone();
+    pub fn start(&self, generation: Arc<Mutex<u64>>, tx: Sender<u64>) -> JoinHandle<()> {
+        let counter = self.counter;
+        let trigger_model = self.trigger_model.clone();
+        let trigger_storage = self.trigger.clone();
 
-        let trigger_factory = Arc::new(trigger_factory);
-        let trigger_factory_ = trigger_factory.clone();
-
-        let trigger = Arc::new(Mutex::new(None));
-        let trigger_ = trigger.clone();
-
-        let handler = tokio::spawn(async move {
-            let generation = generation_;
-            let trigger_factory = trigger_factory_;
-            let trigger_ = trigger_;
-
+        tokio::spawn(async move {
             match counter {
                 Counter::Finit(max) => {
                     for _ in 0..max {
-                        let mut trigger = trigger_factory();
+                        let mut trigger = trigger_model.clone();
+                        trigger.forward_generation(*generation.lock().await).await;
                         let mut rx = trigger.receiver().unwrap();
-                        *trigger_.lock().await = Some(trigger);
+                        trigger.start();
+                        *trigger_storage.lock().await = Some(trigger);
 
                         rx.recv().await;
                         let mut generation = generation.lock().await;
                         debug!("Send {generation}");
-            
+
                         tx.send(*generation).await.unwrap();
                         *generation += 1;
                     }
                 }
                 Counter::Infinite => loop {
-                    let mut trigger = trigger_factory();
+                    let mut trigger = trigger_model.clone();
+                    trigger.forward_generation(*generation.lock().await).await;
                     let mut rx = trigger.receiver().unwrap();
-                    *trigger_.lock().await = Some(trigger);
+                    trigger.start();
+                    *trigger_storage.lock().await = Some(trigger);
 
                     rx.recv().await;
                     let mut generation = generation.lock().await;
                     debug!("Send {generation}");
-        
+
                     tx.send(*generation).await.unwrap();
                     *generation += 1;
                 },
             }
-        });
-
-        Self {
-            counter,
-            generation,
-            handler,
-            sender: tx_,
-            receiver: Some(rx),
-            trigger_factory,
-            trigger,
-        }
+        })
     }
 }
 
-impl Trigger for CounterTrigger {
-    fn abort(&self) {
-        self.handler.abort();
-        tokio::task::block_in_place(|| {
-            let trigger = self.trigger.blocking_lock().take();
-            if let Some(trigger) = trigger {
-                trigger.abort();
-            }
-        })
-    }
-
-    fn receiver(&mut self) -> Option<Receiver<u64>> {
-        self.receiver.take()
-    }
-
-    fn generation(&self) -> u64 {
-        tokio::task::block_in_place(|| *self.generation.blocking_lock())
-    }
-
-    fn forward_generation(&mut self, offset: u64) {
-        tokio::task::block_in_place(move || {
-            let mut generation = self.generation.blocking_lock();
-            *generation += offset;
-        })
+impl Clone for CounterTrigger {
+    fn clone(&self) -> Self {
+        Self {
+            counter: self.counter,
+            trigger_model: self.trigger_model.clone(),
+            trigger: Arc::new(Mutex::new(None)),
+        }
     }
 }
