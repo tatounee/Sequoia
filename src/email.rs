@@ -53,7 +53,11 @@ impl Email {
         }
     }
 
-    pub fn create(
+    pub fn builder() -> EmailBuilder {
+        EmailBuilder::new()
+    }
+
+    pub async fn create(
         sender_adresse: EmailAddress,
         email: EmailModel,
         tags: Vec<String>,
@@ -61,36 +65,38 @@ impl Email {
     ) -> Result<Self> {
         let this = Self::new(sender_adresse, email, tags.try_into()?);
 
-        this.email.write(db)?;
+        this.email.write(db).await?;
 
-        let mut stmt = db
-            .connection()
-            .prepare(r"
-                INSERT INTO Email (ID, sender_adresse, tags, email_discriminant, plain_email_ID, template_email_ID) 
-                VALUES (?, ?, ?, ?, ?, ?)
-            ")?;
-
-        match &this.email {
-            EmailModel::Plain(plain_email) => {
-                stmt.execute((
-                    &this.id,
-                    this.sender_adresse.to_string(),
-                    &this.tags.to_string(),
-                    0,
-                    plain_email.id(),
-                    Null,
-                ))?;
+        db.connection(|conn| {
+            let mut stmt = conn.prepare(r"
+                    INSERT INTO Email (ID, sender_adresse, tags, email_discriminant, plain_email_ID, template_email_ID) 
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ")?;
+    
+            match &this.email {
+                EmailModel::Plain(plain_email) => {
+                    stmt.execute((
+                        &this.id,
+                        this.sender_adresse.to_string(),
+                        &this.tags.to_string(),
+                        0,
+                        plain_email.id(),
+                        Null,
+                    ))?;
+                }
+                EmailModel::Template(template_email) => {
+                    stmt.execute((
+                        &this.id,
+                        this.sender_adresse.to_string(),
+                        1,
+                        Null,
+                        template_email.id(),
+                    ))?;
+                }
             }
-            EmailModel::Template(template_email) => {
-                stmt.execute((
-                    &this.id,
-                    this.sender_adresse.to_string(),
-                    1,
-                    Null,
-                    template_email.id(),
-                ))?;
-            }
-        }
+            
+            Ok(())
+        }).await?;
 
         Ok(this)
     }
@@ -117,27 +123,30 @@ impl Email {
         }
     }
 
-    pub fn get_one(id: &str, db: &DB) -> Result<Option<Self>> {
-        let mut stmt = db.connection().prepare_cached(
-            r"
-            SELECT em.ID, em.tags, em.sender_adresse, em.email_discriminant,
-              pe.ID as plain_email_id, pe.subject as plain_subject, pe.body as plain_body,
-              te.ID as template_email_id, te.subject as template_subject, te.body as template_body, te.source_path as template_source_path
-                FROM Email em
-                LEFT JOIN PlainEmail pe ON em.plain_email_ID = pe.ID
-                LEFT JOIN TemplateEmail te ON em.template_email_ID = te.ID
-                WHERE em.ID = ?
-        ",
-        )?;
+    pub async fn get_one(id: &str, db: &DB) -> Result<Option<Self>> {
+        db.connection(|conn| {
+            let mut stmt = conn.prepare_cached(
+                r"
+                SELECT em.ID, em.tags, em.sender_adresse, em.email_discriminant,
+                  pe.ID as plain_email_id, pe.subject as plain_subject, pe.body as plain_body,
+                  te.ID as template_email_id, te.subject as template_subject, te.body as template_body, te.source_path as template_source_path
+                    FROM Email em
+                    LEFT JOIN PlainEmail pe ON em.plain_email_ID = pe.ID
+                    LEFT JOIN TemplateEmail te ON em.template_email_ID = te.ID
+                    WHERE em.ID = ?
+            ",
+            )?;
+    
+            let columns = columns_from_statement(&stmt);
+    
+            info!("{columns:?}");
+    
+            let mut rows =
+                stmt.query_and_then([id], |row| from_row_with_columns::<SQLEmail>(row, &columns))?;
+    
+            rows.next().transpose()?.map(Email::try_from).transpose()
+        }).await
 
-        let columns = columns_from_statement(&stmt);
-
-        info!("{columns:?}");
-
-        let mut rows =
-            stmt.query_and_then([id], |row| from_row_with_columns::<SQLEmail>(row, &columns))?;
-
-        rows.next().transpose()?.map(Email::try_from).transpose()
     }
 
     #[cfg(debug_assertions)]
@@ -155,10 +164,10 @@ pub enum EmailModel {
 }
 
 impl EmailModel {
-    fn write(&self, db: &DB) -> Result<()> {
+    async fn write(&self, db: &DB) -> Result<()> {
         match self {
-            Self::Plain(plain_email) => plain_email.write(db)?,
-            Self::Template(template_email) => template_email.write(db)?,
+            Self::Plain(plain_email) => plain_email.write(db).await?,
+            Self::Template(template_email) => template_email.write(db).await?,
         }
 
         Ok(())

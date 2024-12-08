@@ -5,7 +5,7 @@ use serde_rusqlite::{columns_from_statement, from_row_with_columns, to_params_na
 
 use crate::db::DB;
 
-use super::Client;
+use super::{client_ref::ClientRef, Client};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Group {
@@ -51,33 +51,63 @@ impl Group {
         self.clients.as_deref()
     }
 
-    pub fn fetch_client(&mut self, db: &DB) -> Result<()> {
-        let mut stmt = db.connection().prepare_cached(
-            r"
-            SELECT Client.ID, Client.adresse FROM Client 
-                JOIN MM_ClientGroupClient ON MM_ClientGroupClient.client_ID = Client.ID
-                WHERE MM_ClientGroupClient.client_group_ID = ?",
-        )?;
+    pub async fn query_clients(&self, db: &DB) -> Result<Vec<ClientRef>> {
+        db.connection(|conn| {
+            let mut stmt = conn.prepare_cached(
+                r"
+                SELECT Client.ID, Client.adresse FROM Client 
+                    JOIN MM_ClientGroupClient ON MM_ClientGroupClient.client_ID = Client.ID
+                    WHERE MM_ClientGroupClient.client_group_ID = ?",
+            )?;
 
-        let columns = columns_from_statement(&stmt);
+            let columns = columns_from_statement(&stmt);
 
-        let clients = Result::from_iter(stmt.query_and_then([self.id.clone()], |row| {
-            from_row_with_columns::<Client>(row, &columns)
-        })?)?;
+            let query = stmt.query_and_then([self.id.clone()], |row| -> Result<ClientRef> {
+                let client = from_row_with_columns::<Client>(row, &columns)?;
+                Ok(ClientRef::from(client))
+            })?;
 
-        self.clients = Some(clients);
+            let clients = Result::from_iter(query)?;
 
-        Ok(())
+            Ok(clients)
+        })
+        .await
     }
 
-    pub fn create(name: String, db: &DB) -> Result<Self> {
+    pub async fn fetch_clients(&mut self, db: &DB) -> Result<()> {
+        db.connection(|conn| {
+            let mut stmt = conn.prepare_cached(
+                r"
+                SELECT Client.ID, Client.adresse FROM Client 
+                    JOIN MM_ClientGroupClient ON MM_ClientGroupClient.client_ID = Client.ID
+                    WHERE MM_ClientGroupClient.client_group_ID = ?",
+            )?;
+
+            let columns = columns_from_statement(&stmt);
+
+            let clients = Result::from_iter(stmt.query_and_then([self.id.clone()], |row| {
+                from_row_with_columns::<Client>(row, &columns)
+            })?)?;
+
+            self.clients = Some(clients);
+
+            Ok(())
+        })
+        .await
+    }
+
+    pub async fn create(name: String, db: &DB) -> Result<Self> {
         let this = Self::new(name);
 
-        let mut stmt = db
-            .connection()
-            .prepare_cached("INSERT INTO ClientGroup (ID, name) VALUES (:id, :name)")?;
+        db.connection(|conn| {
+            let mut stmt =
+                conn.prepare_cached("INSERT INTO ClientGroup (ID, name) VALUES (:id, :name)")?;
 
-        stmt.execute(to_params_named(&this)?.to_slice().as_slice())?;
+            stmt.execute(to_params_named(&this)?.to_slice().as_slice())?;
+
+            Ok(())
+        })
+        .await?;
 
         Ok(this)
     }
@@ -100,47 +130,59 @@ impl Group {
     //     Ok(rows.next().transpose()?)
     // }
 
-    pub fn add_client(&mut self, id: String, db: &DB) -> Result<()> {
-        let mut stmt = db.connection().prepare_cached(
-            "INSERT INTO MM_ClientGroupClient (client_group_ID, client_ID) VALUES (?, ?)",
-        )?;
+    pub async fn add_client(&mut self, id: String, db: &DB) -> Result<()> {
+        db.connection(|conn| {
+            let mut stmt = conn.prepare_cached(
+                "INSERT INTO MM_ClientGroupClient (client_group_ID, client_ID) VALUES (?, ?)",
+            )?;
 
-        stmt.execute((self.id.clone(), id))?;
-
-        Ok(())
-    }
-
-    pub fn add_clients(&mut self, ids: &[String], db: &DB) -> Result<()> {
-        let mut stmt = db.connection().prepare_cached(
-            "INSERT INTO MM_ClientGroupClient (client_group_ID, client_ID) VALUES (?, ?)",
-        )?;
-
-        for id in ids {
             stmt.execute((self.id.clone(), id))?;
-        }
 
-        Ok(())
+            Ok(())
+        })
+        .await
     }
 
-    pub fn remove_client(&mut self, id: String, db: &DB) -> Result<()> {
-        let mut stmt = db.connection().prepare_cached(
-            "DELETE FROM MM_ClientGroupClient WHERE client_group_ID = ? AND client_ID = ?",
-        )?;
+    pub async fn add_clients(&mut self, ids: &[String], db: &DB) -> Result<()> {
+        db.connection(|conn| {
+            let mut stmt = conn.prepare_cached(
+                "INSERT INTO MM_ClientGroupClient (client_group_ID, client_ID) VALUES (?, ?)",
+            )?;
 
-        stmt.execute((self.id.clone(), id))?;
+            for id in ids {
+                stmt.execute((self.id.clone(), id))?;
+            }
 
-        Ok(())
+            Ok(())
+        })
+        .await
     }
 
-    pub fn remove_clients(&mut self, ids: &[String], db: &DB) -> Result<()> {
-        let mut stmt = db.connection().prepare_cached(
-            "DELETE FROM MM_ClientGroupClient WHERE client_group_ID = ? AND client_ID = ?",
-        )?;
+    pub async fn remove_client(&mut self, id: String, db: &DB) -> Result<()> {
+        db.connection(|conn| {
+            let mut stmt = conn.prepare_cached(
+                "DELETE FROM MM_ClientGroupClient WHERE client_group_ID = ? AND client_ID = ?",
+            )?;
 
-        for id in ids {
             stmt.execute((self.id.clone(), id))?;
-        }
 
-        Ok(())
+            Ok(())
+        })
+        .await
+    }
+
+    pub async fn remove_clients(&mut self, ids: &[String], db: &DB) -> Result<()> {
+        db.connection(|conn| {
+            let mut stmt = conn.prepare_cached(
+                "DELETE FROM MM_ClientGroupClient WHERE client_group_ID = ? AND client_ID = ?",
+            )?;
+
+            for id in ids {
+                stmt.execute((self.id.clone(), id))?;
+            }
+
+            Ok(())
+        })
+        .await
     }
 }

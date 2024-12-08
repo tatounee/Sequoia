@@ -61,7 +61,7 @@ impl EmailBuilder {
         self
     }
 
-    pub fn create(self, db: &DB) -> Result<Email> {
+    pub async fn create(self, db: &DB) -> Result<Email> {
         let subject = self.subject.unwrap_or_default();
 
         let sender_adresse = if let Some(sender_adresse) = self.sender_adresse {
@@ -88,6 +88,6 @@ impl EmailBuilder {
 
         let tags = self.tags.unwrap_or_default();
 
-        Email::create(sender_adresse, email, tags.into_vec(), db)
+        Email::create(sender_adresse, email, tags.into_vec(), db).await
     }
 }

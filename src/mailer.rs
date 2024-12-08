@@ -63,13 +63,13 @@ impl<'a> Mailer<'a> {
         })
     }
 
-    pub fn send(&self, email: &Email, receiver: &mut Receiver) -> Result<()> {
+    pub async fn send(&self, email: &Email, receiver: &mut Receiver) -> Result<()> {
         match receiver {
             Receiver::Client(client) => self.send_to_client(email, client)?,
-            Receiver::Group(group) => self.send_to_group(email, group, self.db)?,
+            Receiver::Group(group) => self.send_to_group(email, group, self.db).await?,
         }
 
-        self.write_sending(email, receiver)?;
+        self.write_sending(email, receiver).await?;
 
         Ok(())
     }
@@ -96,7 +96,7 @@ impl<'a> Mailer<'a> {
         Ok(())
     }
 
-    fn send_to_group(&self, email: &Email, group: &mut Group, db: &DB) -> Result<()> {
+    async fn send_to_group(&self, email: &Email, group: &Group, db: &DB) -> Result<()> {
         // TODO: Gérer les erreurs pour les cas où tous les mails ne sont pas envoyé.
         // TODO: Gérer le cas où les clients du group n'ont pas été fetch.
 
@@ -106,7 +106,7 @@ impl<'a> Mailer<'a> {
             group.id()
         );
 
-        group.fetch_client(db)?;
+        group.query_clients(db).await?;
 
         group
             .clients()
@@ -115,7 +115,7 @@ impl<'a> Mailer<'a> {
             .try_for_each(|client| self.send_to_client(email, client))
     }
 
-    fn write_sending(&self, email: &Email, receiver: &Receiver) -> Result<()> {
+    async fn write_sending(&self, email: &Email, receiver: &Receiver) -> Result<()> {
         match receiver {
             Receiver::Client(client) => {
                 debug!(
@@ -124,23 +124,27 @@ impl<'a> Mailer<'a> {
                     client.id()
                 );
 
-                let mut stmt = self.db.connection().prepare_cached(
-                    r"
-                    INSERT INTO MM_EmailClient (email_ID, client_ID, timestamp) VALUES (?, ?, ?)
-                ",
-                )?;
+                self.db.connection(|conn| {
+                    let mut stmt = conn.prepare_cached(
+                        r"
+                        INSERT INTO MM_EmailClient (email_ID, client_ID, timestamp) VALUES (?, ?, ?)
+                    ",
+                    )?;
+    
+                    let params = (
+                        email.id(),
+                        client.id(),
+                        // Unwrap in safe because `UNIX_EPOCH` is 0 and thus less than `SystemTime::now()`
+                        SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs(),
+                    );
+    
+                    stmt.execute(params)?;
 
-                let params = (
-                    email.id(),
-                    client.id(),
-                    // Unwrap in safe because `UNIX_EPOCH` is 0 and thus less than `SystemTime::now()`
-                    SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs(),
-                );
-
-                stmt.execute(params)?;
+                    Ok(())
+                }).await?;
             }
             Receiver::Group(group) => {
                 debug!(
@@ -149,23 +153,28 @@ impl<'a> Mailer<'a> {
                     group.id()
                 );
 
-                let mut stmt = self.db.connection().prepare_cached(
-                    r"
-                    INSERT INTO MM_EmailClientGroup (email_ID, client_group_ID, timestamp) VALUES (?, ?, ?)
-                ",
-                )?;
+                self.db.connection(|conn| {
+                    let mut stmt = conn.prepare_cached(
+                        r"
+                        INSERT INTO MM_EmailClientGroup (email_ID, client_group_ID, timestamp) VALUES (?, ?, ?)
+                    ",
+                    )?;
+    
+                    let params = (
+                        email.id(),
+                        group.id(),
+                        // Unwrap in safe because `UNIX_EPOCH` is 0 and thus less than `SystemTime::now()`
+                        SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs(),
+                    );
+    
+                    stmt.execute(params)?;
 
-                let params = (
-                    email.id(),
-                    group.id(),
-                    // Unwrap in safe because `UNIX_EPOCH` is 0 and thus less than `SystemTime::now()`
-                    SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs(),
-                );
+                    Ok(())
+                }).await?;
 
-                stmt.execute(params)?;
             }
         }
 

@@ -33,26 +33,32 @@ impl TemplateEmail {
         }
     }
 
-    pub fn create(subject: String, body: String, source_path: String, db: &DB) -> Result<Self> {
+    pub async fn create(subject: String, body: String, source_path: String, db: &DB) -> Result<Self> {
         let this = Self::new(subject, body, source_path);
 
-        let mut stmt = db.connection().prepare_cached(
-            "INSERT INTO TemplateEmail (ID, subject, body, source_path) VALUES (:id, :adresse, :body, :source_path)",
-        )?;
+        db.connection(|conn| {
+            let mut stmt = conn.prepare_cached(
+                "INSERT INTO TemplateEmail (ID, subject, body, source_path) VALUES (:id, :adresse, :body, :source_path)",
+            )?;
+    
+            stmt.execute(to_params_named(&this)?.to_slice().as_slice())?;
 
-        stmt.execute(to_params_named(&this)?.to_slice().as_slice())?;
+            Ok(())
+        }).await?;
 
         Ok(this)
     }
 
-    pub(super) fn write(&self, db: &DB) -> Result<()> {
-        let mut stmt = db.connection().prepare_cached(
-            "INSERT INTO TemplateEmail (ID, subject, body, source_path) VALUES (:id, :adresse, :body, :source_path)",
-        )?;
-
-        stmt.execute(to_params_named(self)?.to_slice().as_slice())?;
-
-        Ok(())
+    pub(super) async fn write(&self, db: &DB) -> Result<()> {
+        db.connection(|conn| {
+            let mut stmt = conn.prepare_cached(
+                "INSERT INTO TemplateEmail (ID, subject, body, source_path) VALUES (:id, :adresse, :body, :source_path)",
+            )?;
+    
+            stmt.execute(to_params_named(self)?.to_slice().as_slice())?;
+    
+            Ok(())
+        }).await
     }
 
     pub fn id(&self) -> &str {

@@ -1,5 +1,6 @@
 use color_eyre::eyre::Result;
 use rusqlite::{config::DbConfig, Connection};
+use tokio::sync::Mutex;
 use tracing::{debug, info, instrument};
 
 use crate::client::{Client, Group};
@@ -8,12 +9,12 @@ use crate::mailer::Mailer;
 
 pub struct DB {
     path: String,
-    connection: Connection,
+    connection: Mutex<Connection>,
 }
 
 impl DB {
     #[instrument(skip_all)]
-    pub fn connect() -> Result<Self> {
+    pub async fn connect() -> Result<Self> {
         let path = dotenvy::var("DB_PATH")?;
 
         let connection = Connection::open(&path)?;
@@ -27,39 +28,40 @@ impl DB {
 
         let this = Self {
             path: path.to_owned(),
-            connection,
+            connection: Mutex::new(connection),
         };
 
-        this.init()?;
+        this.init().await?;
 
         Ok(this)
     }
 
-    fn init(&self) -> Result<()> {
+    async fn init(&self) -> Result<()> {
         let create_tables = [
             Client::CREATE_TABLES,
             Group::CREATE_TABLES,
             PlainEmail::CREATE_TABLES,
             TemplateEmail::CREATE_TABLES,
             Email::CREATE_TABLES,
-            Mailer::CREATE_TABLES
+            Mailer::CREATE_TABLES,
         ]
         .join("\n");
 
         debug!(create_tables);
 
-        self.connection.execute_batch(&create_tables)?;
+        self.connection.lock().await.execute_batch(&create_tables)?;
 
         Ok(())
     }
 
-    pub(crate) fn connection(&self) -> &Connection {
-        &self.connection
+    pub(crate) async fn connection<T>(&self, callback: impl FnOnce(&Connection) -> Result<T>) -> Result<T> {
+        let conn = &self.connection.lock().await;
+        callback(conn)
     }
 
     #[cfg(debug_assertions)]
-    pub fn clean(&self) -> Result<()> {
-        self.connection.execute_batch(
+    pub async fn clean(&self) -> Result<()> {
+        self.connection.lock().await.execute_batch(
             r"
             DELETE FROM MM_ClientGroupClient WHERE 0=0;
             DELETE FROM Client WHERE 0=0;
