@@ -72,7 +72,7 @@ impl Email {
                     INSERT INTO Email (ID, sender_adresse, tags, email_discriminant, plain_email_ID, template_email_ID) 
                     VALUES (?, ?, ?, ?, ?, ?)
                 ")?;
-    
+
             match &this.email {
                 EmailModel::Plain(plain_email) => {
                     stmt.execute((
@@ -94,7 +94,7 @@ impl Email {
                     ))?;
                 }
             }
-            
+
             Ok(())
         }).await?;
 
@@ -136,17 +136,16 @@ impl Email {
                     WHERE em.ID = ?
             ",
             )?;
-    
+
             let columns = columns_from_statement(&stmt);
-    
+
             info!("{columns:?}");
-    
+
             let mut rows =
                 stmt.query_and_then([id], |row| from_row_with_columns::<SQLEmail>(row, &columns))?;
-    
+
             rows.next().transpose()?.map(Email::try_from).transpose()
         }).await
-
     }
 
     #[cfg(debug_assertions)]
@@ -220,8 +219,7 @@ impl TryFrom<SQLEmail> for Email {
         Ok(Self {
             id: value.ID,
             tags: Tags::from(value.tags),
-            sender_adresse: dbg!(value
-                .sender_adresse)
+            sender_adresse: dbg!(value.sender_adresse)
                 .parse()
                 .context("Parsing sender_adresse adresse from database")
                 .unwrap(),

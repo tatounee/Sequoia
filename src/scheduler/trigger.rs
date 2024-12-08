@@ -1,6 +1,5 @@
-
-mod datetime;
 mod counter;
+mod datetime;
 
 use std::sync::Arc;
 

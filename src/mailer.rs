@@ -124,27 +124,29 @@ impl<'a> Mailer<'a> {
                     client.id()
                 );
 
-                self.db.connection(|conn| {
-                    let mut stmt = conn.prepare_cached(
-                        r"
+                self.db
+                    .connection(|conn| {
+                        let mut stmt = conn.prepare_cached(
+                            r"
                         INSERT INTO MM_EmailClient (email_ID, client_ID, timestamp) VALUES (?, ?, ?)
                     ",
-                    )?;
-    
-                    let params = (
-                        email.id(),
-                        client.id(),
-                        // Unwrap in safe because `UNIX_EPOCH` is 0 and thus less than `SystemTime::now()`
-                        SystemTime::now()
-                            .duration_since(UNIX_EPOCH)
-                            .unwrap()
-                            .as_secs(),
-                    );
-    
-                    stmt.execute(params)?;
+                        )?;
 
-                    Ok(())
-                }).await?;
+                        let params = (
+                            email.id(),
+                            client.id(),
+                            // Unwrap in safe because `UNIX_EPOCH` is 0 and thus less than `SystemTime::now()`
+                            SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .unwrap()
+                                .as_secs(),
+                        );
+
+                        stmt.execute(params)?;
+
+                        Ok(())
+                    })
+                    .await?;
             }
             Receiver::Group(group) => {
                 debug!(
@@ -159,7 +161,7 @@ impl<'a> Mailer<'a> {
                         INSERT INTO MM_EmailClientGroup (email_ID, client_group_ID, timestamp) VALUES (?, ?, ?)
                     ",
                     )?;
-    
+
                     let params = (
                         email.id(),
                         group.id(),
@@ -169,12 +171,11 @@ impl<'a> Mailer<'a> {
                             .unwrap()
                             .as_secs(),
                     );
-    
+
                     stmt.execute(params)?;
 
                     Ok(())
                 }).await?;
-
             }
         }
 

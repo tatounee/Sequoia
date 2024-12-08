@@ -54,7 +54,10 @@ impl DB {
         Ok(())
     }
 
-    pub(crate) async fn connection<T>(&self, callback: impl FnOnce(&Connection) -> Result<T>) -> Result<T> {
+    pub(crate) async fn connection<T>(
+        &self,
+        callback: impl FnOnce(&Connection) -> Result<T>,
+    ) -> Result<T> {
         let conn = &self.connection.lock().await;
         callback(conn)
     }

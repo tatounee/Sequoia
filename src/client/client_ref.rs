@@ -1,6 +1,5 @@
 use super::Client;
 
-
 pub struct ClientRef(Client);
 
 impl ClientRef {

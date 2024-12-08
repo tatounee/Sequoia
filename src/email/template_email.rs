@@ -33,14 +33,19 @@ impl TemplateEmail {
         }
     }
 
-    pub async fn create(subject: String, body: String, source_path: String, db: &DB) -> Result<Self> {
+    pub async fn create(
+        subject: String,
+        body: String,
+        source_path: String,
+        db: &DB,
+    ) -> Result<Self> {
         let this = Self::new(subject, body, source_path);
 
         db.connection(|conn| {
             let mut stmt = conn.prepare_cached(
                 "INSERT INTO TemplateEmail (ID, subject, body, source_path) VALUES (:id, :adresse, :body, :source_path)",
             )?;
-    
+
             stmt.execute(to_params_named(&this)?.to_slice().as_slice())?;
 
             Ok(())
@@ -54,9 +59,9 @@ impl TemplateEmail {
             let mut stmt = conn.prepare_cached(
                 "INSERT INTO TemplateEmail (ID, subject, body, source_path) VALUES (:id, :adresse, :body, :source_path)",
             )?;
-    
+
             stmt.execute(to_params_named(self)?.to_slice().as_slice())?;
-    
+
             Ok(())
         }).await
     }

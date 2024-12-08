@@ -5,8 +5,8 @@ use cuid2::create_id;
 use email_address::EmailAddress;
 use serde_derive::{Deserialize, Serialize};
 
-mod group;
 mod client_ref;
+mod group;
 
 pub use group::Group;
 use serde_rusqlite::{columns_from_statement, from_row_with_columns, to_params_named};
