@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use color_eyre::eyre::Result;
 use tracing::warn;
 
@@ -44,9 +46,9 @@ impl Tags {
     }
 }
 
-impl ToString for Tags {
-    fn to_string(&self) -> String {
-        self.tags.join(&TAG_SEPARATOR.to_string())
+impl Display for Tags {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.tags.join(&TAG_SEPARATOR.to_string()))
     }
 }
 
